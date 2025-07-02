@@ -72,14 +72,6 @@ def determinar_numero_partes_por_palavras(
 * **`min_parts`**: garante pelo menos este número de arquivos.
 * **`max_parts`**: impede que a divisão crie mais do que este número de arquivos.
 
-## Estrutura de Arquivos
-
-```bash
-.
-├── README.md
-└── split_srt_por_palavras.py  # script principal
-```
-
 ## Contribuição
 
 Contribuições são bem-vindas! Sinta-se à vontade para abrir issues ou enviar pull requests.
