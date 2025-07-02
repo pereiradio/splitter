@@ -1,155 +1,140 @@
-import os
+import math
+from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog
 from datetime import datetime
 
-
-def selecionar_arquivo():
+def selecionar_arquivo() -> Path | None:
     """
     Abre uma janela para seleção do arquivo SRT ou TXT.
-    Retorna o caminho do arquivo selecionado.
+    Retorna um objeto Path para o arquivo selecionado, ou None se nenhum for escolhido.
     """
     root = tk.Tk()
     root.withdraw()
-    caminho_arquivo = filedialog.askopenfilename(
+    caminho = filedialog.askopenfilename(
         title="Selecione o arquivo .srt ou .txt",
         filetypes=[("Arquivos SRT ou TXT", "*.srt;*.txt"), ("Todos os Arquivos", "*.*")]
     )
-    return caminho_arquivo
+    root.destroy()
+    if not caminho:
+        return None
+    return Path(caminho)
 
 
-def ler_paragrafos_srt(caminho_arquivo):
+def ler_conteudo(caminho_arquivo: Path) -> str:
     """
-    Lê o arquivo SRT e extrai os parágrafos válidos.
-    Cada parágrafo é um bloco de texto separado por quebras de linha duplas.
-
-    :param caminho_arquivo: Caminho do arquivo SRT.
-    :return: Lista de parágrafos (blocos) não vazios.
+    Lê todo o conteúdo do arquivo como string e normaliza quebras de linha.
     """
-    with open(caminho_arquivo, 'r', encoding='utf-8') as file:
-        conteudo = file.read()
-
-    # Normaliza as quebras de linha para o padrão \n
-    conteudo = conteudo.replace('\r\n', '\n').replace('\r', '\n')
-
-    # Divide o conteúdo em blocos usando duas quebras de linha e remove espaços em branco
-    blocos = [bloco.strip() for bloco in conteudo.split('\n\n') if bloco.strip() != '']
-
-    return blocos
+    with caminho_arquivo.open('r', encoding='utf-8') as f:
+        conteudo = f.read()
+    return conteudo.replace('\r\n', '\n').replace('\r', '\n')
 
 
-def determinar_numero_partes(total_paragrafos):
+def contar_total_palavras(conteudo: str) -> int:
     """
-    Determina em quantas partes o arquivo deverá ser dividido,
-    com base na quantidade total de parágrafos.
-
-    Critério adotado:
-      - Arquivos pequenos a médios: 2 partes;
-      - Arquivos intermediários: 3 partes;
-      - Arquivos muito grandes: 4 partes.
-
-    :param total_paragrafos: Quantidade total de parágrafos válidos.
-    :return: Número de partes (2, 3 ou 4).
+    Conta o número total de palavras no texto, separadas por whitespace.
     """
-    if total_paragrafos < 50:
-        return 2
-    elif total_paragrafos < 150:
-        return 3
-    else:
-        return 4
+    return len(conteudo.split())
 
 
-def dividir_lista_em_blocos(lista, n):
+def determinar_numero_partes_por_palavras(
+    total_palavras: int,
+    tamanho_alvo: int = 2500, # Tamanho alvo de palavras por parte
+    min_parts: int = 2, # Número mínimo de partes
+    max_parts: int = 10 # Número máximo de partes
+) -> tuple[int, int, int, int]:
     """
-    Divide uma lista em n blocos com tamanhos similares.
-
-    :param lista: Lista original a ser dividida.
-    :param n: Número de blocos desejados.
-    :return: Lista de listas (blocos).
+    Calcula quantas partes criar com base no total de palavras:
+      - partes_estimadas = ceil(total_palavras / tamanho_alvo)
+      - n_partes = clamp(partes_estimadas, min_parts, max_parts)
+    Retorna (n_partes, partes_estimadas, max_parts, tamanho_alvo).
     """
-    total = len(lista)
-    blocos = []
+    partes_estimadas = math.ceil(total_palavras / tamanho_alvo)
+    n_partes = max(min_parts, min(partes_estimadas, max_parts))
+    return n_partes, partes_estimadas, max_parts, tamanho_alvo
 
-    # Tamanho base de cada bloco e o resto que serão distribuídos (um a um) nos primeiros blocos
-    tamanho_base = total // n
-    resto = total % n
 
+def dividir_por_palavras(
+    conteudo: str,
+    n_partes: int
+) -> list[str]:
+    """
+    Divide o texto em n_partes, aproximando-se de igual número de palavras em cada.
+    """
+    palavras = conteudo.split()
+    total = len(palavras)
+    tamanho_base = total // n_partes
+    resto = total % n_partes
+
+    blocos: list[str] = []
     inicio = 0
-    for i in range(n):
-        tamanho_atual = tamanho_base + (1 if i < resto else 0)
-        fim = inicio + tamanho_atual
-        blocos.append(lista[inicio:fim])
-        inicio = fim
-
+    for i in range(n_partes):
+        tamanho = tamanho_base + (1 if i < resto else 0)
+        bloco_palavras = palavras[inicio:inicio + tamanho]
+        blocos.append(' '.join(bloco_palavras))
+        inicio += tamanho
     return blocos
 
 
-def criar_diretorio_saida(caminho_original):
+def criar_diretorio_saida(caminho_original: Path) -> Path:
     """
-    Cria uma nova pasta no mesmo diretório do arquivo original, usando data e hora para o nome.
-    O nome gerado não possui símbolos para garantir que seja válido.
-
-    :param caminho_original: Caminho do arquivo SRT original.
-    :return: Caminho completo para a nova pasta criada.
+    Cria uma nova pasta no mesmo diretório do arquivo original, com nome baseado em timestamp.
     """
-    diretorio, _ = os.path.split(caminho_original)
-
-    # Gera um nome com data e hora (ex: 20250205_153045)
-    nome_pasta = datetime.now().strftime("%Y%m%d_%H%M%S")
-    caminho_novo = os.path.join(diretorio, nome_pasta)
-
-    # Cria a pasta, se não existir
-    os.makedirs(caminho_novo, exist_ok=True)
-
-    return caminho_novo
+    diretorio = caminho_original.parent
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    pasta_saida = diretorio / timestamp
+    pasta_saida.mkdir(exist_ok=True)
+    return pasta_saida
 
 
-def salvar_blocos(blocos, caminho_original):
+def salvar_blocos(
+    blocos: list[str],
+    caminho_original: Path
+) -> None:
     """
-    Salva cada bloco de parágrafos em um arquivo .txt.
-    Os arquivos serão salvos em uma nova pasta criada no mesmo diretório do arquivo original.
-
-    :param blocos: Lista de blocos (cada bloco é uma lista de parágrafos).
-    :param caminho_original: Caminho do arquivo SRT original.
+    Salva cada bloco de texto em um arquivo .txt na pasta de saída.
+    Nomes: <nome_base>_parte<i>.txt
     """
-    # Cria o diretório de saída com base na data e hora
     diretorio_saida = criar_diretorio_saida(caminho_original)
+    nome_base = caminho_original.stem
 
-    # Extrai o nome base do arquivo original
-    _, nome_arquivo = os.path.split(caminho_original)
-    nome_base, _ = os.path.splitext(nome_arquivo)
-
-    for i, bloco in enumerate(blocos, start=1):
+    for i, texto in enumerate(blocos, start=1):
         novo_nome = f"{nome_base}_parte{i}.txt"
-        caminho_novo = os.path.join(diretorio_saida, novo_nome)
-
-        # Junta os parágrafos com duas quebras de linha para preservar o formato de separação
-        with open(caminho_novo, 'w', encoding='utf-8') as f:
-            f.write("\n\n".join(bloco))
-
+        caminho_novo = diretorio_saida / novo_nome
+        with caminho_novo.open('w', encoding='utf-8') as f:
+            f.write(texto)
         print(f"Arquivo salvo: {caminho_novo}")
 
 
-def main():
-    """
-    Função principal que orquestra a seleção do arquivo, leitura, divisão e gravação.
-    """
-    caminho_srt = selecionar_arquivo()
-    if not caminho_srt:
+def main() -> None:
+    caminho = selecionar_arquivo()
+    if caminho is None:
         print("Nenhum arquivo foi selecionado.")
         return
 
-    paragrafos = ler_paragrafos_srt(caminho_srt)
-    total_paragrafos = len(paragrafos)
-    print(f"Total de parágrafos válidos: {total_paragrafos}")
+    try:
+        conteudo = ler_conteudo(caminho)
+    except Exception as e:
+        print(f"Erro ao ler o arquivo: {e}")
+        return
 
-    num_partes = determinar_numero_partes(total_paragrafos)
-    print(f"O arquivo será dividido em {num_partes} partes.")
+    total_palavras = contar_total_palavras(conteudo)
+    print(f"Total de palavras: {total_palavras}")
 
-    blocos = dividir_lista_em_blocos(paragrafos, num_partes)
+    n_partes, estimadas, max_parts, alvo = determinar_numero_partes_por_palavras(total_palavras)
+    print(
+        f"Tamanho alvo por parte: {alvo}\n"
+        f"Partes estimadas (ceil): {estimadas}\n"
+        f"Teto máximo de partes: {max_parts}\n"
+        f"Serão criadas {n_partes} partes."
+    )
 
-    salvar_blocos(blocos, caminho_srt)
+    blocos = dividir_por_palavras(conteudo, n_partes)
 
+    try:
+        salvar_blocos(blocos, caminho)
+    except Exception as e:
+        print(f"Erro ao salvar os arquivos: {e}")
 
 if __name__ == "__main__":
     main()
